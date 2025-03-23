@@ -41,6 +41,6 @@ async def search_game():
 
 if __name__ == "__main__":
     # Use the PORT environment variable provided by Render
-    port = int(os.getenv("PORT", 5000))
+    port = int(os.getenv("PORT", 10000))  # Render uses 10000 by default
     print(f"Running on port {port}")
     app.run(debug=False, host="0.0.0.0", port=port)  # Disable debug mode for production
