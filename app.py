@@ -1,8 +1,12 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS  # Import the CORS module
 from howlongtobeatpy import HowLongToBeat
 import os
 
 app = Flask(__name__)
+
+# Enable CORS for all routes
+CORS(app)
 
 # Load the GSHEET_API_KEY from environment variables
 GSHEET_API_KEY = os.getenv("GSHEET_API_KEY")
