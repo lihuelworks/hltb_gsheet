@@ -1,6 +1,10 @@
 from flask import Flask, request, jsonify
 from howlongtobeatpy import HowLongToBeat
+from dotenv import load_dotenv
 import os
+
+# Load environment variables from .env file
+load_dotenv()
 
 app = Flask(__name__)
 
@@ -40,7 +44,7 @@ async def search_game():
 
 
 if __name__ == "__main__":
-    # Use a consistent port (e.g., 5000)
-    port = 5000
+    # Use a consistent port (e.g., 5000) from .env or default to 5000
+    port = int(os.getenv("PORT", 5000))
     print(f"Running on port {port}")
     app.run(debug=True, use_reloader=False, port=port)
