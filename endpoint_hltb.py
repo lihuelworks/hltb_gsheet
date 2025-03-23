@@ -1,13 +1,23 @@
 from flask import Flask, request, jsonify
 from howlongtobeatpy import HowLongToBeat
+import os
 
 app = Flask(__name__)
+
+# Load the GSHEET_API_KEY from environment variables
+GSHEET_API_KEY = os.getenv("GSHEET_API_KEY")
 
 
 @app.route("/search-game", methods=["POST"])
 async def search_game():
-    # Get the game name from the request body
+    # Get the request body
     data = request.get_json()
+
+    # Check if GSHEET_API_KEY is provided and matches the environment variable
+    if "GSHEET_API_KEY" not in data or data["GSHEET_API_KEY"] != GSHEET_API_KEY:
+        return jsonify({"error": "Invalid or missing GSHEET_API_KEY"}), 401
+
+    # Get the game name from the request body
     game_name = data.get("game_name")
 
     if not game_name:
