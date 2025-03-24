@@ -1,16 +1,9 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-from howlongtobeatpy import HowLongToBeat
+import sys
 from duckduckgo_search import DDGS
+from fuzzywuzzy import fuzz
 import re
+from howlongtobeatpy import HowLongToBeat
 import asyncio
-import os
-
-app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
-
-# Load the GSHEET_API_KEY from environment variables
-GSHEET_API_KEY = os.getenv("GSHEET_API_KEY")
 
 
 def clean_title(title):
@@ -120,12 +113,18 @@ def remove_year_and_extra_text(title):
     return title.strip()
 
 
+def title_contains_year(title):
+    # Check if the title contains a year
+    return bool(re.search(r"\(.*?\d{4}.*?\)", title))
+
+
 async def search_howlongtobeat(game_name, year=None):
     # Perform the search using the HowLongToBeat package
     results = await HowLongToBeat().async_search(game_name)
 
     if results is None or len(results) == 0:
-        return None
+        print("No results found or an error occurred")
+        return
 
     # If a year is provided and there are multiple results, filter to only include results with that year
     if year and len(results) > 1:
@@ -143,19 +142,37 @@ async def search_howlongtobeat(game_name, year=None):
     if len(results) > 1:
         results = [results[0]]
 
-    return results[0]
+    # Print the result
+    for i, result in enumerate(results[:1], start=1):
+        print(f"\nResult {i}:")
+        print(f"Game Name: {result.game_name}")
+        print(f"Main Story: {result.main_story} hours")
+        print(f"Main + Extra: {result.main_extra} hours")
+        print(f"Completionist: {result.completionist} hours")
+        print(f"All Styles: {result.all_styles} hours")
+        print(f"Release Year: {result.release_world}")
+        print(f"Raw JSON Data: {result.__dict__}")  # Print all raw data
 
 
-async def search_with_duckduckgo(game_name):
-    # Perform the search using DuckDuckGo
-    results = DDGS().text(game_name, max_results=5)  # Fetch 5 results
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: python duckduckgo_search.py <search_query>")
+        sys.exit(1)
+
+    query = sys.argv[1]
+    # Add "site:wikipedia.org" to the query to search only Wikipedia
+    query_with_site = f"{query} site:wikipedia.org"
+
+    # Perform the search with the modified query
+    results = DDGS().text(query_with_site, max_results=5)  # Fetch 5 results
 
     if results:
         # Clean up and store all the titles
         cleaned_titles = [clean_title(result.get("title", "")) for result in results]
 
         if not cleaned_titles:
-            return None
+            print("No clean results found.")
+            return
 
         # Use the first result from the filtered list
         best_result = results[0]
@@ -164,58 +181,22 @@ async def search_with_duckduckgo(game_name):
         best_match = clean_title(best_result.get("title", ""))
 
         # Extract the year from the query (if available)
-        year = extract_year(game_name)
+        year = extract_year(query)
+
+        # Print the best match and the extracted year (if any)
+        print(f"Best Match: {best_match}")
+        if year:
+            print(f"Extracted Year: {year}")
 
         # Remove the year and extra text from the best match for the HLTB search
         best_match_cleaned = remove_year_and_extra_text(best_match)
+        print(f"Searching HLTB for: {best_match_cleaned}")
 
         # Search HowLongToBeat with the cleaned best match and filter by extracted year (if available)
-        return await search_howlongtobeat(best_match_cleaned, year)
+        asyncio.run(search_howlongtobeat(best_match_cleaned, year))
     else:
-        return None
-
-
-@app.route("/search-game", methods=["POST"])
-async def search_game():
-    # Log the incoming request
-    print("Incoming request data:", request.get_json())
-
-    # Get the request body
-    data = request.get_json()
-
-    # Check if GSHEET_API_KEY is provided and matches the environment variable
-    if "GSHEET_API_KEY" not in data or data["GSHEET_API_KEY"] != GSHEET_API_KEY:
-        print("Invalid or missing GSHEET_API_KEY")
-        return jsonify({"error": "Invalid or missing GSHEET_API_KEY"}), 401
-
-    # Get the game name from the request body
-    game_name = data.get("game_name")
-
-    if not game_name:
-        print("game_name is required")
-        return jsonify({"error": "game_name is required"}), 400
-
-    # First attempt: Search directly using HowLongToBeat
-    result = await search_howlongtobeat(game_name)
-
-    if result is None:
-        print("No results found in first attempt. Trying DuckDuckGo search...")
-        # Second attempt: Use DuckDuckGo to find a better match
-        result = await search_with_duckduckgo(game_name)
-
-    if result is None:
-        print("No results found after DuckDuckGo search")
-        return jsonify({"error": "No results found"}), 404
-
-    # Extract the `main_story` value
-    main_story = result.main_story
-
-    # Return the result
-    return jsonify({"game_name": result.game_name, "main_story": main_story})
+        print("No results found.")
 
 
 if __name__ == "__main__":
-    # Use the PORT environment variable provided by Render
-    port = int(os.getenv("PORT", 10000))  # Render uses 10000 by default
-    print(f"Running on port {port}")
-    app.run(debug=False, host="0.0.0.0", port=port)  # Disable debug mode for production
+    main()
