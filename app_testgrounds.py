@@ -1,201 +1,93 @@
 import sys
-from duckduckgo_search import DDGS
-from fuzzywuzzy import fuzz
 import re
-from howlongtobeatpy import HowLongToBeat
 import asyncio
-
-
-def clean_title(title):
-    # Remove common prefixes and suffixes
-    unwanted_prefixes = [
-        "Buy",
-        "Download",
-        "Amazon.com",
-        "Steam",
-        "PlayStation Store",
-        "Xbox Store",
-        "Wikipedia",
-        "IMDb",
-        "Fandom",
-        "Video",
-        "Game",
-        "Games",
-    ]
-    unwanted_suffixes = [
-        "on",
-        "at",
-        "for",
-        "in",
-        "the",
-        "a",
-        "an",
-        "by",
-        "with",
-        "from",
-        "to",
-    ]
-
-    # Remove unwanted prefixes
-    for prefix in unwanted_prefixes:
-        if title.lower().startswith(prefix.lower()):
-            title = title[len(prefix) :].strip()
-
-    # Remove unwanted suffixes
-    for suffix in unwanted_suffixes:
-        if title.lower().endswith(suffix.lower()):
-            title = title[: -len(suffix)].strip()
-
-    # Remove any trailing " - ", " | ", " : ", etc.
-    title = re.sub(r"[-:|]\s*$", "", title).strip()
-
-    # Remove Wikipedia-specific suffixes like " - Wikipedi"
-    title = re.sub(r"\s*- Wikipedi.*$", "", title).strip()
-
-    # Remove any remaining unwanted terms (but preserve meaningful phrases)
-    unwanted_terms = [
-        "wikipedia",
-        "steam",
-        "buy",
-        "game",
-        "video",
-        "playstation",
-        "xbox",
-        "fandom",
-        "amazon",
-        "download",
-        "old",
-        "games",
-        "imdb",
-        "on",
-    ]
-    # Split the title into words and filter out unwanted terms
-    words = title.split()
-    cleaned_words = []
-    skip_next = False
-    for i, word in enumerate(words):
-        if skip_next:
-            skip_next = False
-            continue
-        # Check if the current word and the next word form a meaningful phrase
-        if i < len(words) - 1:
-            phrase = f"{word} {words[i + 1]}".lower()
-            if phrase in ["save the"]:  # Add more meaningful phrases here if needed
-                cleaned_words.append(word)
-                cleaned_words.append(words[i + 1])
-                skip_next = True
-                continue
-        # If not part of a meaningful phrase, filter out unwanted terms
-        if word.lower() not in unwanted_terms:
-            cleaned_words.append(word)
-    title = " ".join(cleaned_words)
-
-    # Remove any trailing " - ", " | ", " : ", etc. again
-    title = re.sub(r"[-:|]\s*$", "", title).strip()
-
-    return title.strip()
+from howlongtobeatpy import HowLongToBeat
+from serpapi import GoogleSearch
 
 
 def extract_year(title):
-    # Extract the year from the title, e.g., (2005), (Video 2005), etc.
-    match = re.search(r"\(.*?(\d{4})\).*?", title)
-    if match:
-        return int(match.group(1))  # Return the year as an integer
-    return None  # Return None if no year is found
+    """Extracts year from input if present, e.g., 'God of War (2005 video game)' -> 2005"""
+    match = re.search(r"\(.*?(\d{4}).*?\)", title)
+    return int(match.group(1)) if match else None
 
 
-def remove_year_and_extra_text(title):
-    # Remove the year and extra text like "Video", "IMDb", etc.
-    title = re.sub(r"\(.*?\d{4}.*?\)", "", title)  # Remove (Video 2005), (2005), etc.
-    title = re.sub(
-        r"\b(video|imdb)\b", "", title, flags=re.IGNORECASE
-    )  # Remove "Video", "IMDb"
-    return title.strip()
-
-
-def title_contains_year(title):
-    # Check if the title contains a year
-    return bool(re.search(r"\(.*?\d{4}.*?\)", title))
+def normalize_query(query):
+    """Normalize and remove special characters like '™', '®' etc."""
+    # Replace common special characters with their base versions
+    query = query.replace("™", "").replace("®", "").replace("©", "")
+    query = re.sub(r"[^\x00-\x7F]+", "", query)  # Remove any non-ASCII characters
+    return query.strip()
 
 
 async def search_howlongtobeat(game_name, year=None):
-    # Perform the search using the HowLongToBeat package
+    """Searches HowLongToBeat with the full title; if multiple results, filters by year"""
     results = await HowLongToBeat().async_search(game_name)
 
-    if results is None or len(results) == 0:
+    if not results:
         print("No results found or an error occurred")
         return
 
-    # If a year is provided and there are multiple results, filter to only include results with that year
+    # If year was extracted and multiple results exist, filter by year
     if year and len(results) > 1:
-        filtered_results = []
-        for result in results:
-            # Ensure release_world is treated as a string
-            release_year = str(result.release_world) if result.release_world else None
-            if release_year and str(year) == release_year:
-                filtered_results.append(result)
-        # If filtering by year yields results, use only those results
-        if filtered_results:
-            results = filtered_results
+        results = [
+            r for r in results if r.release_world and str(year) == str(r.release_world)
+        ]
 
-    # If there's still more than one result, return only the first one
-    if len(results) > 1:
-        results = [results[0]]
-
-    # Print the result
-    for i, result in enumerate(results[:1], start=1):
-        print(f"\nResult {i}:")
-        print(f"Game Name: {result.game_name}")
+    result = results[0] if results else None
+    if result:
+        print(f"\nGame Name: {result.game_name}")
         print(f"Main Story: {result.main_story} hours")
         print(f"Main + Extra: {result.main_extra} hours")
         print(f"Completionist: {result.completionist} hours")
         print(f"All Styles: {result.all_styles} hours")
         print(f"Release Year: {result.release_world}")
-        print(f"Raw JSON Data: {result.__dict__}")  # Print all raw data
+
+
+def google_search(query):
+    """Searches Google via SerpAPI, prioritizing Wikipedia results"""
+    params = {
+        "q": f"{query} site:wikipedia.org",  # Forces Wikipedia priority
+        "api_key": "5e38dfb2ed9fa0fd486ab4906afa102e79e9b9de8abced676a66ae74c60ad87a",
+    }
+    search = GoogleSearch(params)
+    results = search.get_dict().get("organic_results", [])
+    return results
+
+
+def remove_year_from_query(query, year):
+    """Remove the year from the query string (e.g., 'God of War (2005 video game)' -> 'God of War')"""
+    return re.sub(r"\(\d{4}\s*video game\)", "", query).strip()
 
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python duckduckgo_search.py <search_query>")
+        print("Usage: python search.py <search_query>")
         sys.exit(1)
 
-    query = sys.argv[1]
-    # Add "site:wikipedia.org" to the query to search only Wikipedia
-    query_with_site = f"{query} site:wikipedia.org"
+    query = sys.argv[1]  # Full user input
+    year = extract_year(query)  # Extract year if present
 
-    # Perform the search with the modified query
-    results = DDGS().text(query_with_site, max_results=5)  # Fetch 5 results
+    query = normalize_query(query)  # Normalize the query to remove special characters
 
-    if results:
-        # Clean up and store all the titles
-        cleaned_titles = [clean_title(result.get("title", "")) for result in results]
+    results = google_search(query)
 
-        if not cleaned_titles:
-            print("No clean results found.")
-            return
+    # Prioritize Wikipedia results, fall back to general if none exist
+    wiki_results = [r for r in results if "wikipedia.org" in r.get("link", "").lower()]
+    best_result = wiki_results[0] if wiki_results else (results[0] if results else None)
 
-        # Use the first result from the filtered list
-        best_result = results[0]
-
-        # Clean the title
-        best_match = clean_title(best_result.get("title", ""))
-
-        # Extract the year from the query (if available)
-        year = extract_year(query)
-
-        # Print the best match and the extracted year (if any)
-        print(f"Best Match: {best_match}")
-        if year:
-            print(f"Extracted Year: {year}")
-
-        # Remove the year and extra text from the best match for the HLTB search
-        best_match_cleaned = remove_year_and_extra_text(best_match)
-        print(f"Searching HLTB for: {best_match_cleaned}")
-
-        # Search HowLongToBeat with the cleaned best match and filter by extracted year (if available)
-        asyncio.run(search_howlongtobeat(best_match_cleaned, year))
-    else:
+    if not best_result:
         print("No results found.")
+        return
+
+    best_match = best_result.get("title", "").strip()  # Keep full title
+    print(f"Best Match: {best_match}")
+    if year:
+        print(f"Extracted Year: {year}")
+
+    # Remove the year from query for HLTB search
+    cleaned_query = remove_year_from_query(query, year)
+    print(f"Searching HLTB for: {cleaned_query}")
+    asyncio.run(search_howlongtobeat(cleaned_query, year))
 
 
 if __name__ == "__main__":
