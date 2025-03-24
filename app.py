@@ -164,6 +164,8 @@ async def search_game(game_name):
             cleaned_best_match = remove_year_from_query(cleaned_best_match, year)
             print(f"Best Match: {cleaned_best_match}")
             # Use the cleaned best match to search HLTB
+            if cleaned_best_match.lower() == game_name.lower():
+                cleaned_best_match = game_name
             hltb_result = await search_howlongtobeat(cleaned_best_match, year)
 
     return hltb_result
