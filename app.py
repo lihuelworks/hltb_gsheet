@@ -85,15 +85,29 @@ async def search_howlongtobeat(game_name, year=None):
     """Search the game on HowLongToBeat and filter by year if available."""
     results = await HowLongToBeat().async_search(game_name)
 
+    # Ensure at least 5 results
+    if len(results) < 5:
+        print("Warning: Less than 5 results found.")
+
     if not results:
         return None
 
-    if year and len(results) > 1:
-        results = [
-            result for result in results if str(result.release_world) == str(year)
+    # If year was extracted and multiple results exist, filter by year
+    if year:
+        # Attempt to find results with the matching year
+        matching_results = [
+            r for r in results if r.release_world and str(year) == str(r.release_world)
         ]
 
-    return results[0] if results else None
+        if matching_results:
+            result = matching_results[0]  # Pick the first matching result
+        else:
+            print(f"Year {year} not found in results, using closest match.")
+            result = results[0]  # Fallback to the first result
+    else:
+        result = results[0]  # If no year is provided, pick the first result
+
+    return result
 
 
 def search_with_serpapi(query):
@@ -109,8 +123,8 @@ def search_with_serpapi(query):
 
 async def search_game(game_name):
     """Search the game name using multiple methods (HLTB and SerpAPI)."""
-    year = extract_year(game_name)
-    cleaned_name = clean_title(game_name)
+    year = extract_year(game_name)  # Extract year from original title for filtering
+    cleaned_name = clean_title(game_name)  # Clean the original name for searching
 
     # First attempt: Search on HowLongToBeat
     hltb_result = await search_howlongtobeat(cleaned_name, year)
@@ -120,7 +134,11 @@ async def search_game(game_name):
         serpapi_results = search_with_serpapi(cleaned_name)
         best_result = serpapi_results[0] if serpapi_results else None
         if best_result:
-            hltb_result = await search_howlongtobeat(best_result["title"], year)
+            # Clean the SerpAPI result title and extract the cleaned name
+            cleaned_best_match = clean_title(best_result["title"])
+            print(f"Best Match: {cleaned_best_match}")
+            # Use the cleaned best match to search HLTB
+            hltb_result = await search_howlongtobeat(cleaned_best_match, year)
 
     return hltb_result
 
