@@ -94,6 +94,7 @@ def normalize_query(query):
 
 async def search_howlongtobeat(game_name, year=None):
     """Search the game on HowLongToBeat and filter by year if available."""
+    print("searching with ", game_name)
     results = await HowLongToBeat().async_search(game_name)
     print("results", results)
 
