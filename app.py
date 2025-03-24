@@ -11,6 +11,7 @@ CORS(app)
 
 # Load GSHEET_API_KEY from environment variables
 GSHEET_API_KEY = os.getenv("GSHEET_API_KEY")
+SERP_API_KEY = os.getenv("SERP_API_KEY")
 
 
 def clean_title(title):
@@ -128,7 +129,7 @@ def search_with_serpapi(query):
     """Search Google via SerpAPI, prioritizing Wikipedia results."""
     params = {
         "q": f"{query} videogame site:wikipedia.org",  # Prioritize Wikipedia
-        "api_key": "5e38dfb2ed9fa0fd486ab4906afa102e79e9b9de8abced676a66ae74c60ad87a",
+        "api_key": SERP_API_KEY,
     }
     search = GoogleSearch(params)
     results = search.get_dict().get("organic_results", [])

@@ -3,6 +3,9 @@ import re
 import asyncio
 from howlongtobeatpy import HowLongToBeat
 from serpapi import GoogleSearch
+import os
+
+SERP_API_KEY = os.getenv("SERP_API_KEY")
 
 
 def extract_year(title):
@@ -63,7 +66,7 @@ def google_search(query):
     """Searches Google via SerpAPI, prioritizing Wikipedia results"""
     params = {
         "q": f"{query} site:wikipedia.org",  # Forces Wikipedia priority
-        "api_key": "5e38dfb2ed9fa0fd486ab4906afa102e79e9b9de8abced676a66ae74c60ad87a",
+        "api_key": SERP_API_KEY,
     }
     search = GoogleSearch(params)
     results = search.get_dict().get("organic_results", [])
