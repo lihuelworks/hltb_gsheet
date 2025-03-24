@@ -152,53 +152,55 @@ async def search_with_duckduckgo(game_name):
     results = DDGS().text(game_name, max_results=5)  # Fetch 5 results
 
     if results:
-        # Clean up and store all the titles
-        cleaned_titles = [clean_title(result.get("title", "")) for result in results]
+        # Find Wikipedia results first
+        wikipedia_result = None
+        for result in results:
+            if "wikipedia" in result.get("url", "").lower():
+                wikipedia_result = result
+                break
 
-        if not cleaned_titles:
-            return None
+        if wikipedia_result:
+            # Clean the Wikipedia title and remove unwanted suffixes
+            best_match = clean_title(wikipedia_result.get("title", ""))
+            print(f"\nDuckDuckGo Search Results (Wikipedia prioritized):")
+            print(f"Original Title: {wikipedia_result.get('title', '')}")
+            print(f"Cleaned Title: {best_match}")
 
-        # Use the first result from the filtered list
+            # Extract year and clean the title before searching with HLTB
+            year = extract_year(game_name)
+            best_match_cleaned = remove_year_and_extra_text(best_match)
+
+            # Perform a search with HowLongToBeat
+            hltb_results = await HowLongToBeat().async_search(best_match_cleaned)
+            if hltb_results:
+                # Use fuzzy matching if needed
+                best_hltb_match = max(
+                    hltb_results,
+                    key=lambda result: fuzz.ratio(
+                        best_match_cleaned.lower(), result.game_name.lower()
+                    ),
+                )
+                print(f"Best Match Found: {best_hltb_match.game_name}")
+                return best_hltb_match
+
+        # If no Wikipedia result, proceed with regular search
+        print("No Wikipedia result found, continuing with the regular search.")
         best_result = results[0]
-
-        # Clean the title
         best_match = clean_title(best_result.get("title", ""))
+        print(f"Cleaned Title: {best_match}")
 
-        # Extract the year from the query (if available)
-        year = extract_year(game_name)
-
-        # Remove the year and extra text from the best match for the HLTB search
-        best_match_cleaned = remove_year_and_extra_text(best_match)
-
-        # Log the cleaned title for debugging
-        print(f"Cleaned Title: {best_match_cleaned}")
-
-        # Perform a fuzzy search with HowLongToBeat
-        hltb_results = await HowLongToBeat().async_search(best_match_cleaned)
-
-        if hltb_results is None or len(hltb_results) == 0:
-            print("No results found after cleaning and searching.")
-            return None
-
-        # Use fuzzy matching to find the best match
-        best_hltb_match = None
-        best_score = 0
-        for result in hltb_results:
-            score = fuzz.ratio(best_match_cleaned.lower(), result.game_name.lower())
-            if score > best_score:
-                best_score = score
-                best_hltb_match = result
-
-        if best_hltb_match:
-            print(
-                f"Best Match Found: {best_hltb_match.game_name} (Score: {best_score})"
+        # Continue as before with fuzzy matching
+        hltb_results = await HowLongToBeat().async_search(best_match)
+        if hltb_results:
+            best_hltb_match = max(
+                hltb_results,
+                key=lambda result: fuzz.ratio(
+                    best_match.lower(), result.game_name.lower()
+                ),
             )
             return best_hltb_match
-        else:
-            print("No matching results found in HowLongToBeat.")
-            return None
-    else:
-        return None
+
+    return None
 
 
 @app.route("/search-game", methods=["POST"])
