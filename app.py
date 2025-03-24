@@ -94,12 +94,14 @@ def normalize_query(query):
 async def search_howlongtobeat(game_name, year=None):
     """Search the game on HowLongToBeat and filter by year if available."""
     results = await HowLongToBeat().async_search(game_name)
+    print("results", results)
 
     # Ensure at least 5 results
     if len(results) < 5:
         print("Warning: Less than 5 results found.")
 
     if not results:
+        print("No results found or an error occurred")
         return None
 
     # If year was extracted and multiple results exist, filter by year
