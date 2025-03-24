@@ -72,6 +72,7 @@ def clean_title(title):
     # Remove any unwanted terms
     words = title.split()
     cleaned_words = [word for word in words if word.lower() not in unwanted_terms]
+    print("clean_title - gotten", title, " returned ", " ".join(cleaned_words).strip())
     return " ".join(cleaned_words).strip()
 
 
