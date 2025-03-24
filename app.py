@@ -81,6 +81,16 @@ def extract_year(title):
     return int(match.group(1)) if match else None
 
 
+def normalize_query(query):
+    """Normalize and remove special characters like '™', '®' etc., and unnecessary suffixes like (PS2)"""
+    query = query.replace("™", "").replace("®", "").replace("©", "")
+    query = re.sub(
+        r"\(.*?\)", "", query
+    )  # Remove everything inside parentheses (PS2, video game, etc.)
+    query = re.sub(r"[^\x00-\x7F]+", "", query)  # Remove any non-ASCII characters
+    return query.strip()
+
+
 async def search_howlongtobeat(game_name, year=None):
     """Search the game on HowLongToBeat and filter by year if available."""
     results = await HowLongToBeat().async_search(game_name)
@@ -121,6 +131,13 @@ def search_with_serpapi(query):
     return results
 
 
+def remove_year_from_query(query, year):
+    """Remove the year from the query string (e.g., 'God of War (2005 video game)' -> 'God of War')"""
+    return re.sub(
+        r"\(\d{4}(?:\s*video\s*game|\s*videogame|\s*series)?\)", "", query
+    ).strip()
+
+
 async def search_game(game_name):
     """Search the game name using multiple methods (HLTB and SerpAPI)."""
     year = extract_year(game_name)  # Extract year from original title for filtering
@@ -136,6 +153,11 @@ async def search_game(game_name):
         if best_result:
             # Clean the SerpAPI result title and extract the cleaned name
             cleaned_best_match = clean_title(best_result["title"])
+            # Normalize the query to remove special characters
+            cleaned_best_match = normalize_query(cleaned_best_match)
+
+            # Clean the title from SerpAPI results (remove special characters and year part)
+            cleaned_best_match = remove_year_from_query(cleaned_best_match, year)
             print(f"Best Match: {cleaned_best_match}")
             # Use the cleaned best match to search HLTB
             hltb_result = await search_howlongtobeat(cleaned_best_match, year)
