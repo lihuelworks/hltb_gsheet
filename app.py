@@ -148,8 +148,14 @@ async def search_game(game_name):
     year = extract_year(game_name)  # Extract year from original title for filtering
     cleaned_name = clean_title(game_name)  # Clean the original name for searching
 
-    # First attempt: Search on HowLongToBeat
+    # First attempt: Search on HowLongToBeat with original cleaned name
     hltb_result = await search_howlongtobeat(cleaned_name, year)
+
+    # Second attempt: If first fails, try with all uppercase version
+    if not hltb_result:
+        uppercase_name = cleaned_name.upper()
+        print(f"Trying uppercase version: {uppercase_name}")
+        hltb_result = await search_howlongtobeat(uppercase_name, year)
 
     if not hltb_result:
         # If no result, search using SerpAPI
