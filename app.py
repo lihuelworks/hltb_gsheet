@@ -213,7 +213,7 @@ async def search_game(game_name):
 
 
 @app.route("/search-game", methods=["POST"])
-async def search_game_route():
+def search_game_route():
     """Endpoint to search for a game."""
     data = request.get_json()
 
@@ -226,7 +226,7 @@ async def search_game_route():
         return jsonify({"error": "game_name is required"}), 400
 
     # Perform the search
-    result = await search_game(game_name)
+    result = asyncio.run(search_game(game_name))
 
     if not result:
         return jsonify({"error": "No results found"}), 404
