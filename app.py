@@ -230,6 +230,110 @@ def search_with_serpapi(query):
         return []
 
 
+def search_hltb_with_serpapi(game_name):
+    """
+    Search for HowLongToBeat data using SerpAPI with 'howlongtobeat GAMENAME' query.
+    Extracts playtime from Google's featured snippets and HLTB organic results.
+    """
+    if not SERP_API_KEY:
+        logger.warning("SERP_API_KEY not configured")
+        return None
+    
+    query = f"howlongtobeat {game_name}"
+    logger.info(f"search_hltb_with_serpapi - query: {query}")
+    
+    try:
+        params = {
+            "q": query,
+            "api_key": SERP_API_KEY,
+            "num": 5  # Only need first few results
+        }
+        search = GoogleSearch(params)
+        results = search.get_dict()
+        
+        # Pattern to match time formats
+        time_pattern = r'(\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?)\s*(?:Hours?|hrs?)'
+        
+        data = {
+            'main_story': None,
+            'main_extra': None,
+            'completionist': None,
+        }
+        
+        # Check answer_box first (Google's featured snippet)
+        if "answer_box" in results:
+            answer_text = results["answer_box"].get("answer", "") or results["answer_box"].get("snippet", "")
+            logger.debug(f"Found answer_box: {answer_text[:150]}")
+            matches = re.findall(time_pattern, answer_text, re.IGNORECASE)
+            if matches:
+                data['main_story'] = parse_time_to_hours(matches[0])
+                if len(matches) > 1:
+                    data['main_extra'] = parse_time_to_hours(matches[1])
+                if len(matches) > 2:
+                    data['completionist'] = parse_time_to_hours(matches[2])
+        
+        # Check organic results for HLTB links
+        for result in results.get("organic_results", []):
+            link = result.get("link", "")
+            snippet = result.get("snippet", "")
+            
+            if "howlongtobeat.com" in link and snippet:
+                logger.debug(f"Found HLTB result: {snippet[:100]}")
+                
+                # Extract times from snippet
+                matches = re.findall(time_pattern, snippet, re.IGNORECASE)
+                if matches and not data['main_story']:
+                    data['main_story'] = parse_time_to_hours(matches[0])
+                
+                # Try to extract specific types
+                if "main story" in snippet.lower():
+                    main_match = re.search(r'main story[:\s]+' + time_pattern, snippet, re.IGNORECASE)
+                    if main_match:
+                        data['main_story'] = parse_time_to_hours(main_match.group(1))
+                
+                if "completionist" in snippet.lower() or "100%" in snippet:
+                    comp_match = re.search(r'(?:completionist|100%)[:\s]+' + time_pattern, snippet, re.IGNORECASE)
+                    if comp_match:
+                        data['completionist'] = parse_time_to_hours(comp_match.group(1))
+                
+                # If we found data, no need to check more results
+                if data['main_story']:
+                    break
+        
+        if data['main_story']:
+            logger.info(f"Extracted HLTB data: main={data['main_story']}, comp={data['completionist']}")
+            return data
+        else:
+            logger.info("No HLTB data found in SerpAPI results")
+            return None
+            
+    except Exception as e:
+        logger.error(f"HLTB SerpAPI search failed: {str(e)}")
+        return None
+
+
+def parse_time_to_hours(time_str):
+    """
+    Convert time string to hours float.
+    Handles: "10" -> 10.0, "10.5" -> 10.5, "10-12" -> 11.0 (average)
+    """
+    time_str = str(time_str).strip()
+    
+    if '-' in time_str:
+        parts = time_str.split('-')
+        try:
+            low = float(parts[0])
+            high = float(parts[1])
+            return (low + high) / 2
+        except:
+            return float(parts[0])
+    
+    try:
+        return float(time_str)
+    except:
+        return None
+
+
 def remove_year_from_query(query, year):
     """Remove the year from the query string (e.g., 'God of War (2005 video game)' -> 'God of War')"""
     logger.debug(f"remove_year_from_query - original query: {query}, year: {year}")
@@ -241,38 +345,71 @@ def remove_year_from_query(query, year):
 
 
 async def search_game(game_name):
-    """Search the game name using multiple methods (HLTB and SerpAPI)."""
+    """
+    Search for game playtime using SerpAPI.
+    
+    Strategy:
+    1. Try direct HLTB search via SerpAPI: "howlongtobeat GAMENAME"
+    2. Fallback to Wikipedia search if no HLTB data found
+    """
     logger.info(f"Starting search for: {game_name}")
 
     year = extract_year(game_name)
     cleaned_name = clean_title(game_name)
 
-    # Attempt 1: Search HLTB with cleaned name
-    logger.info("Attempt 1: Searching HLTB with cleaned name")
-    hltb_result = await search_howlongtobeat(cleaned_name, year)
+    # Attempt 1: Direct HLTB search via SerpAPI
+    logger.info("Attempt 1: Searching 'howlongtobeat GAMENAME' via SerpAPI")
+    hltb_data = search_hltb_with_serpapi(cleaned_name)
+    
+    if hltb_data:
+        logger.info(f"✅ Found HLTB data via SerpAPI for: {cleaned_name}")
+        # Convert to expected format
+        class HLTBResult:
+            def __init__(self, main, extra, comp, name):
+                self.main_story = main
+                self.main_extra = extra
+                self.completionist = comp
+                self.game_name = name
+        
+        return HLTBResult(
+            hltb_data['main_story'],
+            hltb_data['main_extra'],
+            hltb_data['completionist'],
+            cleaned_name
+        )
 
-    # Attempt 2: If no result, try with SerpAPI fallback
-    if not hltb_result and SERP_API_KEY:
-        logger.info("Attempt 2: Trying SerpAPI search")
-        serpapi_results = search_with_serpapi(cleaned_name)
-        best_result = serpapi_results[0] if serpapi_results else None
+    # Attempt 2: Fallback to Wikipedia search (for game identification)
+    logger.info("Attempt 2: No HLTB data found, trying Wikipedia search")
+    serpapi_results = search_with_serpapi(cleaned_name)
+    
+    if serpapi_results:
+        best_result = serpapi_results[0]
+        cleaned_best_match = clean_title(best_result["title"])
+        cleaned_best_match = normalize_query(cleaned_best_match)
+        cleaned_best_match = remove_year_from_query(cleaned_best_match, year)
+        logger.info(f"Best Match from Wikipedia: {cleaned_best_match}")
+        
+        # Try HLTB search with the corrected name
+        hltb_data = search_hltb_with_serpapi(cleaned_best_match)
+        
+        if hltb_data:
+            logger.info(f"✅ Found HLTB data with corrected name: {cleaned_best_match}")
+            class HLTBResult:
+                def __init__(self, main, extra, comp, name):
+                    self.main_story = main
+                    self.main_extra = extra
+                    self.completionist = comp
+                    self.game_name = name
+            
+            return HLTBResult(
+                hltb_data['main_story'],
+                hltb_data['main_extra'],
+                hltb_data['completionist'],
+                cleaned_best_match
+            )
 
-        if best_result:
-            cleaned_best_match = clean_title(best_result["title"])
-            cleaned_best_match = normalize_query(cleaned_best_match)
-            cleaned_best_match = remove_year_from_query(cleaned_best_match, year)
-            logger.info(f"Best Match from SerpAPI: {cleaned_best_match}")
-
-            if cleaned_best_match.lower() == game_name.lower():
-                cleaned_best_match = game_name
-            hltb_result = await search_howlongtobeat(cleaned_best_match, year)
-
-    if hltb_result:
-        logger.info(f"Final result found: {hltb_result.game_name}")
-    else:
-        logger.warning(f"No results found after all attempts for: {game_name}")
-
-    return hltb_result
+    logger.warning(f"No HLTB data found after all attempts for: {game_name}")
+    return None
 
 
 @app.route("/health", methods=["GET"])
