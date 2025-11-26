@@ -99,9 +99,41 @@ For automatic updates on sheet edits:
 
 1. **Create the trigger function** in your Apps Script:
    ```javascript
+   // Configuration
+   const BACKLOG_SHEET = "📃🎮 backlog";
+   const TITLE_COLUMN = 3;  // Column C
+   const HOWLONGTOBEAT_COLUMN = 5;  // Column E
+   
    function onSheetEdit(e) {
-     // Your auto-fill logic here
-     // This function will be called on every edit
+     const { range, value, oldValue } = e;
+     const sheet = range.getSheet();
+     const column = range.getColumn();
+     const row = range.getRow();
+     
+     // Only process edits in the backlog sheet
+     if (sheet.getName() !== BACKLOG_SHEET) return;
+     
+     // Auto-fill playtime when a game title is entered
+     if (column === TITLE_COLUMN && row > 1 && value && value !== oldValue) {
+       const hltbCell = sheet.getRange(row, HOWLONGTOBEAT_COLUMN);
+       hltbCell.setValue('Loading...');
+       
+       const playTime = getGamePlayTimeHandler(value);
+       hltbCell.setValue(playTime);
+     }
+     
+     // Handle manual "gettime" command
+     if (column === HOWLONGTOBEAT_COLUMN && row > 1 && 
+         value && value.toLowerCase() === 'gettime') {
+       const gameTitle = sheet.getRange(row, TITLE_COLUMN).getValue();
+       if (!gameTitle) return;
+       
+       const hltbCell = sheet.getRange(row, HOWLONGTOBEAT_COLUMN);
+       hltbCell.setValue('Loading...');
+       
+       const playTime = getGamePlayTimeHandler(gameTitle);
+       hltbCell.setValue(playTime);
+     }
    }
    ```
 
@@ -116,6 +148,11 @@ For automatic updates on sheet edits:
    - Click **Save**
 
 3. **Authorize** the script when prompted
+
+**How it works:**
+- When you type a game name in the TITLE column, it automatically fetches and fills the playtime
+- Type `gettime` in the HOWLONGTOBEAT column to manually refresh the data
+- Shows "Loading..." while fetching from the API
 
 ## API Endpoints
 
