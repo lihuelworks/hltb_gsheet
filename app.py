@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from howlongtobeatpy import HowLongToBeat
+# TEMPORARILY DISABLED: HLTB library is broken due to bot protection (see GitHub issue)
+# from howlongtobeatpy import HowLongToBeat
 from serpapi import GoogleSearch
 import re
 import asyncio
@@ -148,57 +149,63 @@ def normalize_query(query):
 
 
 async def search_howlongtobeat(game_name, year=None, timeout=10):
-    """Search the game on HowLongToBeat and filter by year if available."""
-    logger.info(f"search_howlongtobeat - searching for: {game_name} (year: {year})")
-
-    try:
-        # Add timeout to prevent hanging requests
-        results = await asyncio.wait_for(
-            HowLongToBeat().async_search(game_name), timeout=timeout
-        )
-        
-        # Debug: Log the type and value of results
-        logger.debug(f"HLTB raw results type: {type(results)}, value: {results}")
-        
-        # Handle None or empty results
-        if results is None:
-            logger.warning(f"search_howlongtobeat - HLTB returned None for: {game_name}")
-            return None
-        
-        if not results or len(results) == 0:
-            logger.info(f"search_howlongtobeat - No results found for: {game_name}")
-            return None
-            
-        logger.info(f"search_howlongtobeat - found {len(results)} results")
-        
-    except asyncio.TimeoutError:
-        logger.error(f"HLTB search timed out after {timeout}s for: {game_name}")
-        return None
-    except Exception as e:
-        logger.error(f"HLTB search failed for '{game_name}': {str(e)}", exc_info=True)
-        return None
-
-    # If year was extracted and multiple results exist, filter by year
-    if year:
-        logger.debug(f"Filtering results by year: {year}")
-        matching_results = [
-            r for r in results if r.release_world and str(year) in str(r.release_world)
-        ]
-
-        if matching_results:
-            logger.info(f"Found {len(matching_results)} matching year results")
-            result = matching_results[0]
-        else:
-            logger.info(f"Year {year} not found, using first result")
-            result = results[0]
-    else:
-        logger.debug("No year provided, using first result")
-        result = results[0]
-
-    logger.info(
-        f"search_howlongtobeat - selected: {result.game_name if result else 'None'}"
-    )
-    return result
+    """
+    TEMPORARILY DISABLED: HowLongToBeat library is non-functional due to aggressive bot protection.
+    
+    As of November 2025, HLTB has implemented bot protection that blocks all programmatic API access
+    with 403 "Session expired" errors. The Python library (howlongtobeatpy) cannot bypass this.
+    
+    See GitHub issue: https://github.com/ScrappyCocco/HowLongToBeat-PythonAPI/issues/[TBD]
+    
+    This function now returns None to force fallback to SerpAPI which works reliably.
+    """
+    logger.info(f"search_howlongtobeat - DISABLED due to bot protection. Game: {game_name}")
+    logger.info("Falling back to SerpAPI for game time data")
+    return None
+    
+    # ORIGINAL CODE COMMENTED OUT - DO NOT USE UNTIL BOT PROTECTION IS RESOLVED
+    # try:
+    #     results = await asyncio.wait_for(
+    #         HowLongToBeat().async_search(game_name), timeout=timeout
+    #     )
+    #     
+    #     if results is None:
+    #         logger.warning(f"search_howlongtobeat - HLTB returned None for: {game_name}")
+    #         return None
+    #     
+    #     if not results or len(results) == 0:
+    #         logger.info(f"search_howlongtobeat - No results found for: {game_name}")
+    #         return None
+    #         
+    #     logger.info(f"search_howlongtobeat - found {len(results)} results")
+    #     
+    # except asyncio.TimeoutError:
+    #     logger.error(f"HLTB search timed out after {timeout}s for: {game_name}")
+    #     return None
+    # except Exception as e:
+    #     logger.error(f"HLTB search failed for '{game_name}': {str(e)}", exc_info=True)
+    #     return None
+    #
+    # if year:
+    #     logger.debug(f"Filtering results by year: {year}")
+    #     matching_results = [
+    #         r for r in results if r.release_world and str(year) in str(r.release_world)
+    #     ]
+    #
+    #     if matching_results:
+    #         logger.info(f"Found {len(matching_results)} matching year results")
+    #         result = matching_results[0]
+    #     else:
+    #         logger.info(f"Year {year} not found, using first result")
+    #         result = results[0]
+    # else:
+    #     logger.debug("No year provided, using first result")
+    #     result = results[0]
+    #
+    # logger.info(
+    #     f"search_howlongtobeat - selected: {result.game_name if result else 'None'}"
+    # )
+    # return result
 
 
 def search_with_serpapi(query):
