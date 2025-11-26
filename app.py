@@ -11,8 +11,7 @@ from functools import lru_cache
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -151,13 +150,15 @@ def normalize_query(query):
 async def search_howlongtobeat(game_name, year=None, timeout=10):
     """Search the game on HowLongToBeat and filter by year if available."""
     logger.info(f"search_howlongtobeat - searching for: {game_name} (year: {year})")
-    
+
     try:
-        # Add timeout to prevent hanging
+        # Add timeout to prevent hanging requests
         results = await asyncio.wait_for(
-            HowLongToBeat().async_search(game_name),
-            timeout=timeout
+            HowLongToBeat().async_search(game_name), timeout=timeout
         )
+        if results is None:
+            logger.info("search_howlongtobeat - HLTB returned None")
+            return None
         logger.info(f"search_howlongtobeat - found {len(results)} results")
     except asyncio.TimeoutError:
         logger.error(f"HLTB search timed out after {timeout}s for: {game_name}")
@@ -187,7 +188,9 @@ async def search_howlongtobeat(game_name, year=None, timeout=10):
         logger.debug("No year provided, using first result")
         result = results[0]
 
-    logger.info(f"search_howlongtobeat - selected: {result.game_name if result else 'None'}")
+    logger.info(
+        f"search_howlongtobeat - selected: {result.game_name if result else 'None'}"
+    )
     return result
 
 
@@ -196,9 +199,9 @@ def search_with_serpapi(query):
     if not SERP_API_KEY:
         logger.warning("SERP_API_KEY not configured, skipping SerpAPI search")
         return []
-    
+
     logger.info(f"search_with_serpapi - searching for: {query}")
-    
+
     try:
         params = {
             "q": f"{query} videogame site:wikipedia.org",
@@ -239,7 +242,7 @@ async def search_game(game_name):
         logger.info("Attempt 2: Trying SerpAPI search")
         serpapi_results = search_with_serpapi(cleaned_name)
         best_result = serpapi_results[0] if serpapi_results else None
-        
+
         if best_result:
             cleaned_best_match = clean_title(best_result["title"])
             cleaned_best_match = normalize_query(cleaned_best_match)
@@ -261,11 +264,16 @@ async def search_game(game_name):
 @app.route("/health", methods=["GET"])
 def health_check():
     """Health check endpoint for monitoring."""
-    return jsonify({
-        "status": "healthy",
-        "cache_size": len(CACHE),
-        "serp_api_configured": bool(SERP_API_KEY)
-    }), 200
+    return (
+        jsonify(
+            {
+                "status": "healthy",
+                "cache_size": len(CACHE),
+                "serp_api_configured": bool(SERP_API_KEY),
+            }
+        ),
+        200,
+    )
 
 
 @app.route("/search-game", methods=["POST"])
@@ -312,10 +320,10 @@ def search_game_route():
         "completionist": result.completionist,
         "all_styles": result.all_styles,
     }
-    
+
     # Cache the result
     set_cached_result(game_name, response_data)
-    
+
     return jsonify(response_data), 200
 
 
