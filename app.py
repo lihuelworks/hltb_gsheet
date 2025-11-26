@@ -156,19 +156,26 @@ async def search_howlongtobeat(game_name, year=None, timeout=10):
         results = await asyncio.wait_for(
             HowLongToBeat().async_search(game_name), timeout=timeout
         )
+        
+        # Debug: Log the type and value of results
+        logger.debug(f"HLTB raw results type: {type(results)}, value: {results}")
+        
+        # Handle None or empty results
         if results is None:
-            logger.info("search_howlongtobeat - HLTB returned None")
+            logger.warning(f"search_howlongtobeat - HLTB returned None for: {game_name}")
             return None
+        
+        if not results or len(results) == 0:
+            logger.info(f"search_howlongtobeat - No results found for: {game_name}")
+            return None
+            
         logger.info(f"search_howlongtobeat - found {len(results)} results")
+        
     except asyncio.TimeoutError:
         logger.error(f"HLTB search timed out after {timeout}s for: {game_name}")
         return None
     except Exception as e:
-        logger.error(f"HLTB search failed for '{game_name}': {str(e)}")
-        return None
-
-    if not results:
-        logger.info("No results found")
+        logger.error(f"HLTB search failed for '{game_name}': {str(e)}", exc_info=True)
         return None
 
     # If year was extracted and multiple results exist, filter by year
