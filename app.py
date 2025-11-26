@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+
 # TEMPORARILY DISABLED: HLTB library is broken due to bot protection (see GitHub issue)
 # from howlongtobeatpy import HowLongToBeat
 from serpapi import GoogleSearch
@@ -151,34 +152,36 @@ def normalize_query(query):
 async def search_howlongtobeat(game_name, year=None, timeout=10):
     """
     TEMPORARILY DISABLED: HowLongToBeat library is non-functional due to aggressive bot protection.
-    
+
     As of November 2025, HLTB has implemented bot protection that blocks all programmatic API access
     with 403 "Session expired" errors. The Python library (howlongtobeatpy) cannot bypass this.
-    
+
     See GitHub issue: https://github.com/ScrappyCocco/HowLongToBeat-PythonAPI/issues/[TBD]
-    
+
     This function now returns None to force fallback to SerpAPI which works reliably.
     """
-    logger.info(f"search_howlongtobeat - DISABLED due to bot protection. Game: {game_name}")
+    logger.info(
+        f"search_howlongtobeat - DISABLED due to bot protection. Game: {game_name}"
+    )
     logger.info("Falling back to SerpAPI for game time data")
     return None
-    
+
     # ORIGINAL CODE COMMENTED OUT - DO NOT USE UNTIL BOT PROTECTION IS RESOLVED
     # try:
     #     results = await asyncio.wait_for(
     #         HowLongToBeat().async_search(game_name), timeout=timeout
     #     )
-    #     
+    #
     #     if results is None:
     #         logger.warning(f"search_howlongtobeat - HLTB returned None for: {game_name}")
     #         return None
-    #     
+    #
     #     if not results or len(results) == 0:
     #         logger.info(f"search_howlongtobeat - No results found for: {game_name}")
     #         return None
-    #         
+    #
     #     logger.info(f"search_howlongtobeat - found {len(results)} results")
-    #     
+    #
     # except asyncio.TimeoutError:
     #     logger.error(f"HLTB search timed out after {timeout}s for: {game_name}")
     #     return None
@@ -238,75 +241,85 @@ def search_hltb_with_serpapi(game_name):
     if not SERP_API_KEY:
         logger.warning("SERP_API_KEY not configured")
         return None
-    
+
     query = f"howlongtobeat {game_name}"
     logger.info(f"search_hltb_with_serpapi - query: {query}")
-    
+
     try:
         params = {
             "q": query,
             "api_key": SERP_API_KEY,
-            "num": 5  # Only need first few results
+            "num": 5,  # Only need first few results
         }
         search = GoogleSearch(params)
         results = search.get_dict()
-        
+
         # Pattern to match time formats
-        time_pattern = r'(\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?)\s*(?:Hours?|hrs?)'
-        
+        time_pattern = r"(\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?)\s*(?:Hours?|hrs?)"
+
         data = {
-            'main_story': None,
-            'main_extra': None,
-            'completionist': None,
+            "main_story": None,
+            "main_extra": None,
+            "completionist": None,
         }
-        
+
         # Check answer_box first (Google's featured snippet)
         if "answer_box" in results:
-            answer_text = results["answer_box"].get("answer", "") or results["answer_box"].get("snippet", "")
+            answer_text = results["answer_box"].get("answer", "") or results[
+                "answer_box"
+            ].get("snippet", "")
             logger.debug(f"Found answer_box: {answer_text[:150]}")
             matches = re.findall(time_pattern, answer_text, re.IGNORECASE)
             if matches:
-                data['main_story'] = parse_time_to_hours(matches[0])
+                data["main_story"] = parse_time_to_hours(matches[0])
                 if len(matches) > 1:
-                    data['main_extra'] = parse_time_to_hours(matches[1])
+                    data["main_extra"] = parse_time_to_hours(matches[1])
                 if len(matches) > 2:
-                    data['completionist'] = parse_time_to_hours(matches[2])
-        
+                    data["completionist"] = parse_time_to_hours(matches[2])
+
         # Check organic results for HLTB links
         for result in results.get("organic_results", []):
             link = result.get("link", "")
             snippet = result.get("snippet", "")
-            
+
             if "howlongtobeat.com" in link and snippet:
                 logger.debug(f"Found HLTB result: {snippet[:100]}")
-                
+
                 # Extract times from snippet
                 matches = re.findall(time_pattern, snippet, re.IGNORECASE)
-                if matches and not data['main_story']:
-                    data['main_story'] = parse_time_to_hours(matches[0])
-                
+                if matches and not data["main_story"]:
+                    data["main_story"] = parse_time_to_hours(matches[0])
+
                 # Try to extract specific types
                 if "main story" in snippet.lower():
-                    main_match = re.search(r'main story[:\s]+' + time_pattern, snippet, re.IGNORECASE)
+                    main_match = re.search(
+                        r"main story[:\s]+" + time_pattern, snippet, re.IGNORECASE
+                    )
                     if main_match:
-                        data['main_story'] = parse_time_to_hours(main_match.group(1))
-                
+                        data["main_story"] = parse_time_to_hours(main_match.group(1))
+
                 if "completionist" in snippet.lower() or "100%" in snippet:
-                    comp_match = re.search(r'(?:completionist|100%)[:\s]+' + time_pattern, snippet, re.IGNORECASE)
+                    comp_match = re.search(
+                        r"(?:completionist|100%)[:\s]+" + time_pattern,
+                        snippet,
+                        re.IGNORECASE,
+                    )
                     if comp_match:
-                        data['completionist'] = parse_time_to_hours(comp_match.group(1))
-                
+                        data["completionist"] = parse_time_to_hours(comp_match.group(1))
+
                 # If we found data, no need to check more results
-                if data['main_story']:
+                if data["main_story"]:
                     break
-        
-        if data['main_story']:
-            logger.info(f"Extracted HLTB data: main={data['main_story']}, comp={data['completionist']}")
+
+        if data["main_story"]:
+            logger.info(
+                f"Extracted HLTB data: main={data['main_story']}, comp={data['completionist']}"
+            )
             return data
         else:
             logger.info("No HLTB data found in SerpAPI results")
             return None
-            
+
     except Exception as e:
         logger.error(f"HLTB SerpAPI search failed: {str(e)}")
         return None
@@ -318,16 +331,16 @@ def parse_time_to_hours(time_str):
     Handles: "10" -> 10.0, "10.5" -> 10.5, "10-12" -> 11.0 (average)
     """
     time_str = str(time_str).strip()
-    
-    if '-' in time_str:
-        parts = time_str.split('-')
+
+    if "-" in time_str:
+        parts = time_str.split("-")
         try:
             low = float(parts[0])
             high = float(parts[1])
             return (low + high) / 2
         except:
             return float(parts[0])
-    
+
     try:
         return float(time_str)
     except:
@@ -347,7 +360,7 @@ def remove_year_from_query(query, year):
 async def search_game(game_name):
     """
     Search for game playtime using SerpAPI.
-    
+
     Strategy:
     1. Try direct HLTB search via SerpAPI: "howlongtobeat GAMENAME"
     2. Fallback to Wikipedia search if no HLTB data found
@@ -360,9 +373,10 @@ async def search_game(game_name):
     # Attempt 1: Direct HLTB search via SerpAPI
     logger.info("Attempt 1: Searching 'howlongtobeat GAMENAME' via SerpAPI")
     hltb_data = search_hltb_with_serpapi(cleaned_name)
-    
+
     if hltb_data:
         logger.info(f"✅ Found HLTB data via SerpAPI for: {cleaned_name}")
+
         # Convert to expected format
         class HLTBResult:
             def __init__(self, main, extra, comp, name):
@@ -370,42 +384,43 @@ async def search_game(game_name):
                 self.main_extra = extra
                 self.completionist = comp
                 self.game_name = name
-        
+
         return HLTBResult(
-            hltb_data['main_story'],
-            hltb_data['main_extra'],
-            hltb_data['completionist'],
-            cleaned_name
+            hltb_data["main_story"],
+            hltb_data["main_extra"],
+            hltb_data["completionist"],
+            cleaned_name,
         )
 
     # Attempt 2: Fallback to Wikipedia search (for game identification)
     logger.info("Attempt 2: No HLTB data found, trying Wikipedia search")
     serpapi_results = search_with_serpapi(cleaned_name)
-    
+
     if serpapi_results:
         best_result = serpapi_results[0]
         cleaned_best_match = clean_title(best_result["title"])
         cleaned_best_match = normalize_query(cleaned_best_match)
         cleaned_best_match = remove_year_from_query(cleaned_best_match, year)
         logger.info(f"Best Match from Wikipedia: {cleaned_best_match}")
-        
+
         # Try HLTB search with the corrected name
         hltb_data = search_hltb_with_serpapi(cleaned_best_match)
-        
+
         if hltb_data:
             logger.info(f"✅ Found HLTB data with corrected name: {cleaned_best_match}")
+
             class HLTBResult:
                 def __init__(self, main, extra, comp, name):
                     self.main_story = main
                     self.main_extra = extra
                     self.completionist = comp
                     self.game_name = name
-            
+
             return HLTBResult(
-                hltb_data['main_story'],
-                hltb_data['main_extra'],
-                hltb_data['completionist'],
-                cleaned_best_match
+                hltb_data["main_story"],
+                hltb_data["main_extra"],
+                hltb_data["completionist"],
+                cleaned_best_match,
             )
 
     logger.warning(f"No HLTB data found after all attempts for: {game_name}")
@@ -465,11 +480,13 @@ def search_game_route():
 
     # Build response - handle both old HowLongToBeatEntry and new HLTBResult objects
     response_data = {
-        "game_name": result.game_name if hasattr(result, 'game_name') else game_name,
-        "main_story": result.main_story if hasattr(result, 'main_story') else None,
-        "main_extra": result.main_extra if hasattr(result, 'main_extra') else None,
-        "completionist": result.completionist if hasattr(result, 'completionist') else None,
-        "all_styles": result.all_styles if hasattr(result, 'all_styles') else None,
+        "game_name": result.game_name if hasattr(result, "game_name") else game_name,
+        "main_story": result.main_story if hasattr(result, "main_story") else None,
+        "main_extra": result.main_extra if hasattr(result, "main_extra") else None,
+        "completionist": (
+            result.completionist if hasattr(result, "completionist") else None
+        ),
+        "all_styles": result.all_styles if hasattr(result, "all_styles") else None,
     }
 
     # Cache the result
