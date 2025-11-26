@@ -305,7 +305,7 @@ The `howlongtobeatpy` library is currently broken due to HLTB's bot protection:
 
 **Our solution**: Extract HLTB data from Google search results instead, which works reliably.
 
-See [GITHUB_ISSUE.md](GITHUB_ISSUE.md) and [HLTB_STATUS.md](HLTB_STATUS.md) for detailed investigation.
+For more details, see the [GitHub issue on HowLongToBeat-PythonAPI](https://github.com/ScrappyCocco/HowLongToBeat-PythonAPI/issues/52).
 
 ## License
 
