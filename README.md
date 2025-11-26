@@ -96,9 +96,26 @@ The script automatically fills the **HOWLONGTOBEAT** column when you enter a gam
 #### Step 3: Add Trigger (Optional)
 
 For automatic updates on sheet edits:
-1. In Apps Script: **Triggers** (clock icon)
-2. Add trigger: `onEdit` → From spreadsheet → On edit
-3. Save
+
+1. **Create the trigger function** in your Apps Script:
+   ```javascript
+   function onSheetEdit(e) {
+     // Your auto-fill logic here
+     // This function will be called on every edit
+   }
+   ```
+
+2. **Set up the trigger**:
+   - In Apps Script editor, click **Triggers** (clock icon on left sidebar)
+   - Click **+ Add Trigger** (bottom right)
+   - Configure:
+     - Function to run: `onSheetEdit`
+     - Deployment: Head
+     - Event source: From spreadsheet
+     - Event type: On edit
+   - Click **Save**
+
+3. **Authorize** the script when prompted
 
 ## API Endpoints
 
