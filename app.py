@@ -463,13 +463,13 @@ def search_game_route():
         logger.info(f"No results found for: {game_name}")
         return jsonify({"error": "No results found"}), 404
 
-    # Build response
+    # Build response - handle both old HowLongToBeatEntry and new HLTBResult objects
     response_data = {
-        "game_name": result.game_name,
-        "main_story": result.main_story,
-        "main_extra": result.main_extra,
-        "completionist": result.completionist,
-        "all_styles": result.all_styles,
+        "game_name": result.game_name if hasattr(result, 'game_name') else game_name,
+        "main_story": result.main_story if hasattr(result, 'main_story') else None,
+        "main_extra": result.main_extra if hasattr(result, 'main_extra') else None,
+        "completionist": result.completionist if hasattr(result, 'completionist') else None,
+        "all_styles": result.all_styles if hasattr(result, 'all_styles') else None,
     }
 
     # Cache the result
