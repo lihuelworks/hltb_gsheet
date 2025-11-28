@@ -6,7 +6,9 @@ A Flask API that fetches game playtime data from HowLongToBeat and integrates wi
 
 This API extracts HowLongToBeat data by searching **"howlongtobeat GAMENAME"** on Google via SerpAPI and parsing the playtime information from the search results (featured snippets and organic results).
 
-**Why not use the HLTB library directly?** The official HowLongToBeat website has aggressive bot protection that blocks all direct programmatic access from Python. Instead, we leverage Google search results which include HLTB data in a structured format.
+**Why not use the HLTB library directly?** ~~The official HowLongToBeat website has aggressive bot protection that blocks all direct programmatic access from Python. Instead, we leverage Google search results which include HLTB data in a structured format.~~
+
+As of [howlongtobeatpy v1.0.19](https://github.com/ScrappyCocco/HowLongToBeat-PythonAPI/releases/tag/1.0.19), the library is expected to work again. If you encounter issues, please see [issue #52](https://github.com/ScrappyCocco/HowLongToBeat-PythonAPI/issues/52) and report any new problems directly to the [HowLongToBeat-PythonAPI repo](https://github.com/ScrappyCocco/HowLongToBeat-PythonAPI/issues). As this package is a web scraper, it is the most vulnerable point in the chain and may break if HLTB changes their site or protection again.
 
 ## Features
 
@@ -296,16 +298,12 @@ The API uses regex patterns to extract times from Google snippets:
 - Render free tier: server sleeps after 15min inactivity
 - First request "wakes up" the server (~30-60 seconds)
 
-## Why Not Use HLTB Library Directly?
 
-The `howlongtobeatpy` library is currently broken due to HLTB's bot protection:
-- All requests return `403 Forbidden` or "Session expired"
-- HLTB uses aggressive bot detection (likely Cloudflare)
-- Python's requests library is fingerprinted and blocked
+## HLTB Library Status (Nov 2025)
 
-**Our solution**: Extract HLTB data from Google search results instead, which works reliably.
+~~The `howlongtobeatpy` library was previously broken due to HLTB's bot protection (403 errors, Cloudflare, etc).~~
 
-For more details, see the [GitHub issue on HowLongToBeat-PythonAPI](https://github.com/ScrappyCocco/HowLongToBeat-PythonAPI/issues/52).
+As of v1.0.19, the library is expected to work again. If you experience issues, see [issue #52](https://github.com/ScrappyCocco/HowLongToBeat-PythonAPI/issues/52) and report any new problems to the [HowLongToBeat-PythonAPI repo](https://github.com/ScrappyCocco/HowLongToBeat-PythonAPI/issues). Since this is a web scraper, it may break again if HLTB changes their site or protection.
 
 ## License
 
