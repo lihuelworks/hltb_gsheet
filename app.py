@@ -159,7 +159,9 @@ async def search_howlongtobeat(game_name, year=None, timeout=10):
         )
 
         if results is None:
-            logger.warning(f"search_howlongtobeat - HLTB returned None for: {game_name}")
+            logger.warning(
+                f"search_howlongtobeat - HLTB returned None for: {game_name}"
+            )
             return None
 
         if not results or len(results) == 0:
@@ -178,7 +180,9 @@ async def search_howlongtobeat(game_name, year=None, timeout=10):
     if year:
         logger.debug(f"Filtering results by year: {year}")
         matching_results = [
-            r for r in results if getattr(r, 'release_world', None) and str(year) in str(r.release_world)
+            r
+            for r in results
+            if getattr(r, "release_world", None) and str(year) in str(r.release_world)
         ]
 
         if matching_results:
@@ -356,58 +360,31 @@ async def search_game(game_name):
     year = extract_year(game_name)
     cleaned_name = clean_title(game_name)
 
-    # Attempt 1: Direct HLTB search via SerpAPI
-    logger.info("Attempt 1: Searching 'howlongtobeat GAMENAME' via SerpAPI")
+    # Attempt 1: Use howlongtobeatpy as main source
+    hltb_result = await search_howlongtobeat(cleaned_name, year)
+    if hltb_result:
+        logger.info(f"✅ [HLTB_PY] Found HLTB data via howlongtobeatpy for: {cleaned_name} - main_story: {getattr(hltb_result, 'main_story', None)}")
+        hltb_result._source = 'hltbpy'
+        return hltb_result
+
+    # Attempt 2: Fallback to SerpAPI if no result from howlongtobeatpy
+    logger.info("[HLTB_SERPAPI] No HLTB data from package, trying SerpAPI fallback")
     hltb_data = search_hltb_with_serpapi(cleaned_name)
-
     if hltb_data:
-        logger.info(f"✅ Found HLTB data via SerpAPI for: {cleaned_name}")
-
-        # Convert to expected format
+        logger.info(f"✅ [HLTB_SERPAPI] Found HLTB data via SerpAPI for: {cleaned_name} - main_story: {hltb_data.get('main_story', None)}")
         class HLTBResult:
             def __init__(self, main, extra, comp, name):
                 self.main_story = main
                 self.main_extra = extra
                 self.completionist = comp
                 self.game_name = name
-
+                self._source = 'serpapi'
         return HLTBResult(
             hltb_data["main_story"],
             hltb_data["main_extra"],
             hltb_data["completionist"],
             cleaned_name,
         )
-
-    # Attempt 2: Fallback to Wikipedia search (for game identification)
-    logger.info("Attempt 2: No HLTB data found, trying Wikipedia search")
-    serpapi_results = search_with_serpapi(cleaned_name)
-
-    if serpapi_results:
-        best_result = serpapi_results[0]
-        cleaned_best_match = clean_title(best_result["title"])
-        cleaned_best_match = normalize_query(cleaned_best_match)
-        cleaned_best_match = remove_year_from_query(cleaned_best_match, year)
-        logger.info(f"Best Match from Wikipedia: {cleaned_best_match}")
-
-        # Try HLTB search with the corrected name
-        hltb_data = search_hltb_with_serpapi(cleaned_best_match)
-
-        if hltb_data:
-            logger.info(f"✅ Found HLTB data with corrected name: {cleaned_best_match}")
-
-            class HLTBResult:
-                def __init__(self, main, extra, comp, name):
-                    self.main_story = main
-                    self.main_extra = extra
-                    self.completionist = comp
-                    self.game_name = name
-
-            return HLTBResult(
-                hltb_data["main_story"],
-                hltb_data["main_extra"],
-                hltb_data["completionist"],
-                cleaned_best_match,
-            )
 
     logger.warning(f"No HLTB data found after all attempts for: {game_name}")
     return None
