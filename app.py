@@ -258,6 +258,10 @@ def search_hltb_with_serpapi(game_name):
         # Pattern to match time formats - MUST have Hours/hrs suffix
         # Handles: "10 Hours", "10.5 hrs", "10-12 Hours", "6½ Hours"
         time_pattern = r"(\d+(?:[½¼¾]|\.\d+)?(?:-\d+(?:\.\d+)?)?)\s*(?:Hours?|hrs?)"
+        
+        # Pattern to detect "X hours a day" or "X hours per day" which is a RATE, not total time
+        # We must SKIP these matches! e.g. "6 Days to complete if you play for 1.5 hours a day"
+        rate_pattern = r"\d+(?:\.\d+)?\s*(?:hours?|hrs?)\s*(?:a|per)\s*day"
 
         data = {
             "main_story": None,
@@ -271,18 +275,23 @@ def search_hltb_with_serpapi(game_name):
                 "answer_box"
             ].get("snippet", "")
             logger.debug(f"Found answer_box: {answer_text[:150]}")
-            matches = re.findall(time_pattern, answer_text, re.IGNORECASE)
-            if matches:
-                # Parse and validate times
-                parsed_times = [parse_time_to_hours(m) for m in matches]
-                valid_times = [t for t in parsed_times if t is not None and 0.25 <= t <= 500]
-                
-                if valid_times:
-                    data["main_story"] = valid_times[0]
-                    if len(valid_times) > 1:
-                        data["main_extra"] = valid_times[1]
-                    if len(valid_times) > 2:
-                        data["completionist"] = valid_times[2]
+            
+            # Skip if this contains "hours per day" format (rate, not total time)
+            if re.search(rate_pattern, answer_text, re.IGNORECASE):
+                logger.info("Skipping answer_box - contains 'hours per day' rate format")
+            else:
+                matches = re.findall(time_pattern, answer_text, re.IGNORECASE)
+                if matches:
+                    # Parse and validate times
+                    parsed_times = [parse_time_to_hours(m) for m in matches]
+                    valid_times = [t for t in parsed_times if t is not None and 0.25 <= t <= 500]
+                    
+                    if valid_times:
+                        data["main_story"] = valid_times[0]
+                        if len(valid_times) > 1:
+                            data["main_extra"] = valid_times[1]
+                        if len(valid_times) > 2:
+                            data["completionist"] = valid_times[2]
 
         # Check organic results for HLTB links (only if no data yet)
         if not data["main_story"]:
@@ -293,6 +302,11 @@ def search_hltb_with_serpapi(game_name):
                 # Only process howlongtobeat.com/game links
                 if "howlongtobeat.com/game" in link and snippet:
                     logger.info(f"Found HLTB result: {snippet[:150]}")
+                    
+                    # Skip if this contains "hours per day" format (rate, not total time)
+                    if re.search(rate_pattern, snippet, re.IGNORECASE):
+                        logger.info("Skipping snippet - contains 'hours per day' rate format")
+                        continue
 
                     # Try to extract specific types first
                     main_match = re.search(
