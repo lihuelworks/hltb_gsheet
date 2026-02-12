@@ -22,6 +22,7 @@ extract_*.py
 serp_*.json
 *.log
 logs/
+temp_file*
 
 # IDE
 .vscode/
