@@ -32,29 +32,40 @@ if not SERP_API_KEY:
     logger.warning("SERP_API_KEY not set - SerpAPI fallback will not work")
 
 # In-memory cache with TTL (will reset on Render restart, but that's fine)
-# Cache structure: {game_name: (result, timestamp)}
+# Cache structure: {normalized_game_name: (result, timestamp)}
 CACHE = {}
 CACHE_TTL_HOURS = 24 * 7  # Cache for 1 week
 
 
+def normalize_cache_key(game_name):
+    """Normalize game name for consistent cache keys."""
+    # Lowercase, strip, remove extra spaces, remove special chars
+    key = game_name.lower().strip()
+    key = re.sub(r'\s+', ' ', key)  # collapse multiple spaces
+    key = re.sub(r'[^\w\s]', '', key)  # remove special chars like : and -
+    return key
+
+
 def get_cached_result(game_name):
     """Get cached result if available and not expired."""
-    if game_name in CACHE:
-        result, timestamp = CACHE[game_name]
+    cache_key = normalize_cache_key(game_name)
+    if cache_key in CACHE:
+        result, timestamp = CACHE[cache_key]
         age = datetime.now() - timestamp
         if age < timedelta(hours=CACHE_TTL_HOURS):
-            logger.info(f"Cache hit for '{game_name}' (age: {age})")
+            logger.info(f"Cache hit for '{game_name}' (key: {cache_key}, age: {age})")
             return result
         else:
             logger.info(f"Cache expired for '{game_name}'")
-            del CACHE[game_name]
+            del CACHE[cache_key]
     return None
 
 
 def set_cached_result(game_name, result):
-    """Cache the result with current timestamp."""
-    CACHE[game_name] = (result, datetime.now())
-    logger.info(f"Cached result for '{game_name}' (cache size: {len(CACHE)})")
+    """Cache the result with current timestamp using normalized key."""
+    cache_key = normalize_cache_key(game_name)
+    CACHE[cache_key] = (result, datetime.now())
+    logger.info(f"Cached result for '{game_name}' (key: {cache_key}, cache size: {len(CACHE)})")
 
 
 def clean_title(title):
@@ -244,8 +255,9 @@ def search_hltb_with_serpapi(game_name):
         search = GoogleSearch(params)
         results = search.get_dict()
 
-        # Pattern to match time formats
-        time_pattern = r"(\d+(?:\.\d+)?(?:-\d+(?:\.\d+)?)?)\s*(?:Hours?|hrs?)"
+        # Pattern to match time formats - MUST have Hours/hrs suffix
+        # Handles: "10 Hours", "10.5 hrs", "10-12 Hours", "6½ Hours"
+        time_pattern = r"(\d+(?:[½¼¾]|\.\d+)?(?:-\d+(?:\.\d+)?)?)\s*(?:Hours?|hrs?)"
 
         data = {
             "main_story": None,
@@ -261,45 +273,59 @@ def search_hltb_with_serpapi(game_name):
             logger.debug(f"Found answer_box: {answer_text[:150]}")
             matches = re.findall(time_pattern, answer_text, re.IGNORECASE)
             if matches:
-                data["main_story"] = parse_time_to_hours(matches[0])
-                if len(matches) > 1:
-                    data["main_extra"] = parse_time_to_hours(matches[1])
-                if len(matches) > 2:
-                    data["completionist"] = parse_time_to_hours(matches[2])
+                # Parse and validate times
+                parsed_times = [parse_time_to_hours(m) for m in matches]
+                valid_times = [t for t in parsed_times if t is not None and 0.25 <= t <= 500]
+                
+                if valid_times:
+                    data["main_story"] = valid_times[0]
+                    if len(valid_times) > 1:
+                        data["main_extra"] = valid_times[1]
+                    if len(valid_times) > 2:
+                        data["completionist"] = valid_times[2]
 
-        # Check organic results for HLTB links
-        for result in results.get("organic_results", []):
-            link = result.get("link", "")
-            snippet = result.get("snippet", "")
+        # Check organic results for HLTB links (only if no data yet)
+        if not data["main_story"]:
+            for result in results.get("organic_results", []):
+                link = result.get("link", "")
+                snippet = result.get("snippet", "")
 
-            if "howlongtobeat.com" in link and snippet:
-                logger.debug(f"Found HLTB result: {snippet[:100]}")
+                # Only process howlongtobeat.com/game links
+                if "howlongtobeat.com/game" in link and snippet:
+                    logger.info(f"Found HLTB result: {snippet[:150]}")
 
-                # Extract times from snippet
-                matches = re.findall(time_pattern, snippet, re.IGNORECASE)
-                if matches and not data["main_story"]:
-                    data["main_story"] = parse_time_to_hours(matches[0])
-
-                # Try to extract specific types
-                if "main story" in snippet.lower():
+                    # Try to extract specific types first
                     main_match = re.search(
-                        r"main story[:\s]+" + time_pattern, snippet, re.IGNORECASE
+                        r"main\s*story[:\s]*" + time_pattern, snippet, re.IGNORECASE
                     )
                     if main_match:
-                        data["main_story"] = parse_time_to_hours(main_match.group(1))
+                        parsed = parse_time_to_hours(main_match.group(1))
+                        if parsed and 0.25 <= parsed <= 500:
+                            data["main_story"] = parsed
 
-                if "completionist" in snippet.lower() or "100%" in snippet:
                     comp_match = re.search(
-                        r"(?:completionist|100%)[:\s]+" + time_pattern,
+                        r"(?:completionist|100%)[:\s]*" + time_pattern,
                         snippet,
                         re.IGNORECASE,
                     )
                     if comp_match:
-                        data["completionist"] = parse_time_to_hours(comp_match.group(1))
+                        parsed = parse_time_to_hours(comp_match.group(1))
+                        if parsed and 0.25 <= parsed <= 500:
+                            data["completionist"] = parsed
 
-                # If we found data, no need to check more results
-                if data["main_story"]:
-                    break
+                    # Fallback: Extract all times from snippet
+                    if not data["main_story"]:
+                        matches = re.findall(time_pattern, snippet, re.IGNORECASE)
+                        if matches:
+                            parsed_times = [parse_time_to_hours(m) for m in matches]
+                            valid_times = [t for t in parsed_times if t is not None and 0.25 <= t <= 500]
+                            if valid_times:
+                                data["main_story"] = valid_times[0]
+                                logger.info(f"Fallback extraction: found {valid_times}, using {valid_times[0]}")
+
+                    # If we found main_story data, stop searching
+                    if data["main_story"]:
+                        break
 
         if data["main_story"]:
             logger.info(
@@ -319,8 +345,17 @@ def parse_time_to_hours(time_str):
     """
     Convert time string to hours float.
     Handles: "10" -> 10.0, "10.5" -> 10.5, "10-12" -> 11.0 (average)
+    Also handles unicode fractions: "6½" -> 6.5, "10¼" -> 10.25
     """
+    if time_str is None:
+        return None
+        
     time_str = str(time_str).strip()
+    
+    # Handle unicode fractions first
+    time_str = time_str.replace('½', '.5')
+    time_str = time_str.replace('¼', '.25')
+    time_str = time_str.replace('¾', '.75')
 
     if "-" in time_str:
         parts = time_str.split("-")
@@ -329,7 +364,10 @@ def parse_time_to_hours(time_str):
             high = float(parts[1])
             return (low + high) / 2
         except:
-            return float(parts[0])
+            try:
+                return float(parts[0])
+            except:
+                return None
 
     try:
         return float(time_str)
